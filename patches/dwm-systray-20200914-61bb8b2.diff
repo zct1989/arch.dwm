@@ -17,10 +17,11 @@ diff --git a/dwm.c b/dwm.c
 index 664c527..abce13d 100644
 --- a/dwm.c
 +++ b/dwm.c
-@@ -57,12 +57,30 @@
+@@ -57,13 +57,31 @@
  #define TAGMASK                 ((1 << LENGTH(tags)) - 1)
  #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
  
+ #define OPAQUE                  0xffU
 +#define SYSTEM_TRAY_REQUEST_DOCK    0
 +
 +/* XEMBED messages */
@@ -81,6 +82,7 @@ index 664c527..abce13d 100644
 +static void resizerequest(XEvent *e);
  static void restack(Monitor *m);
  static void run(void);
+ static void runAutostart(void);
  static void scan(void);
 -static int sendevent(Client *c, Atom proto);
 +static int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3, long d4);
@@ -112,6 +114,7 @@ index 664c527..abce13d 100644
  static int xerror(Display *dpy, XErrorEvent *ee);
  static int xerrordummy(Display *dpy, XErrorEvent *ee);
  static int xerrorstart(Display *dpy, XErrorEvent *ee);
+ static void xinitvisual();
  static void zoom(const Arg *arg);
  
  /* variables */
@@ -135,11 +138,11 @@ index 664c527..abce13d 100644
  			arg.ui = 1 << i;
  		} else if (ev->x < x + blw)
  			click = ClkLtSymbol;
--		else if (ev->x > selmon->ww - (int)TEXTW(stext))
-+		else if (ev->x > selmon->ww - (int)TEXTW(stext) - getsystraywidth())
+-		else if (ev->x > selmon->ww - TEXTW(stext) + lrpad - 2)
++		else if (ev->x > selmon->ww - (int)TEXTW(stext) - getsystraywidth() + lrpad - 2)
  			click = ClkStatusText;
  		else
- 			click = ClkWinTitle;
+			x += blw;
 @@ -483,6 +518,11 @@ cleanup(void)
  	XUngrabKey(dpy, AnyKey, AnyModifier, root);
  	while (mons)
@@ -235,8 +238,8 @@ index 664c527..abce13d 100644
  void
  drawbar(Monitor *m)
  {
--	int x, w, tw = 0;
-+	int x, w, tw = 0, stw = 0;
+- int x, w, wdelta, tw = 0, n = 0, scm;
++ int x, w, wdelta, tw = 0, n = 0, scm, stw = 0;
  	int boxs = drw->fonts->h / 9;
  	int boxw = drw->fonts->h / 6 + 2;
  	unsigned int i, occ = 0, urg = 0;
@@ -255,22 +258,25 @@ index 664c527..abce13d 100644
  	}
  
 +	resizebarwin(m);
- 	for (c = m->clients; c; c = c->next) {
- 		occ |= c->tags;
- 		if (c->isurgent)
+	for (c = m->clients; c; c = c->next) {
+		if (ISVISIBLE(c))
+			n++;
 @@ -729,7 +826,7 @@ drawbar(Monitor *m)
  	drw_setscheme(drw, scheme[SchemeNorm]);
  	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
  
 -	if ((w = m->ww - tw - x) > bh) {
 +	if ((w = m->ww - tw - stw - x) > bh) {
- 		if (m->sel) {
- 			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
- 			drw_text(drw, x, 0, w, bh, lrpad / 2, m->sel->name, 0);
+		if (n > 0) {
+			int remainder = w % n;
+			int tabw = (1.0 / (double)n) * w + 1;
 @@ -740,7 +837,7 @@ drawbar(Monitor *m)
  			drw_rect(drw, x, 0, w, bh, 1, 1);
  		}
  	}
+
+	m->bt = n;
+	m->btw = w;
 -	drw_map(drw, m->barwin, 0, 0, m->ww, bh);
 +	drw_map(drw, m->barwin, 0, 0, m->ww - stw, bh);
  }
@@ -501,7 +507,7 @@ index 664c527..abce13d 100644
 @@ -1571,6 +1756,8 @@ setup(void)
  	scheme = ecalloc(LENGTH(colors), sizeof(Clr *));
  	for (i = 0; i < LENGTH(colors); i++)
- 		scheme[i] = drw_scm_create(drw, colors[i], 3);
+		scheme[i] = drw_scm_create(drw, colors[i], alphas[i], 3);
 +	/* init system tray */
 +	updatesystray();
  	/* init bars */
@@ -550,13 +556,13 @@ index 664c527..abce13d 100644
  	for (m = mons; m; m = m->next) {
  		if (m->barwin)
  			continue;
--		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, m->ww, bh, 0, DefaultDepth(dpy, screen),
+-		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, m->ww, bh, 0, depth,
 +		w = m->ww;
 +		if (showsystray && m == systraytomon(m))
 +			w -= getsystraywidth();
-+		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, w, bh, 0, DefaultDepth(dpy, screen),
- 				CopyFromParent, DefaultVisual(dpy, screen),
- 				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
++		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, w, bh, 0, depth,
+		                          InputOutput, visual,
+		                          CWOverrideRedirect|CWBackPixel|CWBorderPixel|CWColormap|CWEventMask, &wa);
  		XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
 +		if (showsystray && m == systraytomon(m))
 +			XMapRaised(dpy, systray->win);
