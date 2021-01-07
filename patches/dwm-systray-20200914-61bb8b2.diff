@@ -17,11 +17,12 @@ diff --git a/dwm.c b/dwm.c
 index 664c527..abce13d 100644
 --- a/dwm.c
 +++ b/dwm.c
-@@ -57,13 +57,31 @@
+@@ -57,12 +57,30 @@
  #define TAGMASK                 ((1 << LENGTH(tags)) - 1)
  #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
  
  #define OPAQUE                  0xffU
+
 +#define SYSTEM_TRAY_REQUEST_DOCK    0
 +
 +/* XEMBED messages */
@@ -40,7 +41,7 @@ index 664c527..abce13d 100644
 +
  /* enums */
  enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
- enum { SchemeNorm, SchemeSel }; /* color schemes */
+ enum { SchemeNorm, SchemeSel, SchemeHid }; /* color schemes */
  enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 +       NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
         NetWMFullscreen, NetActiveWindow, NetWMWindowType,
